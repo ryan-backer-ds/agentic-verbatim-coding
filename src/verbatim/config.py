@@ -20,7 +20,7 @@ import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from dotenv import dotenv_values
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_validator, model_validator
@@ -69,6 +69,22 @@ class DataSettings(BaseModel):
     def codeframe_path(self) -> Path:
         return self.processed_dir / "codeframe.json"
 
+    @property
+    def index_dir(self) -> Path:
+        return self.root / "index"
+
+    @property
+    def embeddings_path(self) -> Path:
+        return self.index_dir / "embeddings.parquet"
+
+    @property
+    def coded_dir(self) -> Path:
+        return self.root / "coded"
+
+    @property
+    def evaluation_dir(self) -> Path:
+        return self.root / "evaluation"
+
 
 class LLMSettings(BaseModel):
     """Which provider to call, and which model on each."""
@@ -76,6 +92,43 @@ class LLMSettings(BaseModel):
     provider: Provider = Provider.GOOGLE
     gemini_model: str = "gemini-3.5-flash-lite"
     groq_model: str = "openai/gpt-oss-20b"
+
+
+class CodingSettings(BaseModel):
+    """How the coding agent runs over many answers (step 2)."""
+
+    concurrency: int = Field(default=8, ge=1, le=64)
+    few_shot: int = Field(default=3, ge=0, le=10)  # similar coded answers shown per call
+    # Client-side budget for model calls; set it below a free-tier quota. None = no limit.
+    requests_per_minute: int | None = Field(default=None, ge=1)
+
+
+class RetrievalSettings(BaseModel):
+    """How answers are embedded and searched (step 3)."""
+
+    # hybrid: Gemini embeddings + BM25. keyword: BM25 only, no embedding calls at all
+    # (for keys whose embedding quota can't cover the index yet).
+    mode: Literal["hybrid", "keyword"] = "hybrid"
+    embedding_model: str = "gemini-embedding-001"
+    dimensions: int = Field(default=768, ge=128, le=3072)
+    top_k: int = Field(default=8, ge=1, le=50)
+    candidates: int = Field(default=40, ge=1, le=500)  # per retriever, before fusion
+    embed_texts_per_minute: int | None = Field(default=None, ge=1)  # None = no limit
+
+
+class AnalysisSettings(BaseModel):
+    """Rules for the numbers and quotes the analyst agents report (steps 4-5)."""
+
+    min_group_size: int = Field(default=10, ge=1)  # smaller groups are suppressed
+    max_revisions: int = Field(default=2, ge=0, le=5)  # redrafts after a failed grounding check
+
+
+class SafetySettings(BaseModel):
+    """Guardrails and tracing (step 7)."""
+
+    # projects/<project>/locations/<location>/templates/<id>; unset means local checks only.
+    model_armor_template: str | None = None
+    tracing: Literal["off", "console", "cloud_trace"] = "off"
 
 
 class Settings(BaseSettings):
@@ -89,6 +142,10 @@ class Settings(BaseSettings):
 
     data: DataSettings = Field(default_factory=DataSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    coding: CodingSettings = Field(default_factory=CodingSettings)
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
+    safety: SafetySettings = Field(default_factory=SafetySettings)
 
     # Secrets. SecretStr keeps them out of logs, reprs and tracebacks.
     google_ai_api_key: SecretStr | None = None

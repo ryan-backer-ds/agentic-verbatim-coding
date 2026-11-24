@@ -6,8 +6,10 @@ provider has a small builder function; `_BUILDERS` maps provider to builder.
 """
 
 from collections.abc import Callable
+from typing import Any
 
-from google.genai.types import HttpRetryOptions
+from google import genai
+from google.genai.types import HttpOptions, HttpRetryOptions
 from pydantic import SecretStr
 from pydantic_ai.models import Model
 from pydantic_ai.models.google import GoogleModel
@@ -26,11 +28,12 @@ LOW_COST_SETTINGS = ModelSettings(thinking="minimal")
 
 # Gemini answers 429/503 ("model is experiencing high demand") under load.
 # Retry with exponential backoff and jitter instead of failing the whole run.
-# (The Groq SDK already retries 429/5xx twice with backoff by default.)
+# Six attempts wait about a minute in total, long enough for a per-minute quota
+# to reset. (The Groq SDK already retries 429/5xx twice with backoff by default.)
 GEMINI_RETRIES = HttpRetryOptions(
-    attempts=5,
+    attempts=6,
     initial_delay=1.0,
-    max_delay=30.0,
+    max_delay=60.0,
     exp_base=2.0,
     jitter=1.0,
     http_status_codes=[429, 500, 502, 503, 504],
@@ -54,6 +57,25 @@ def configured_providers(settings: Settings) -> list[Provider]:
     return [provider for provider, is_set in available.items() if is_set]
 
 
+def gemini_client_options(settings: Settings) -> dict[str, Any]:
+    """How to reach Gemini outside Pydantic AI (embeddings, the ADK agent).
+
+    Vertex AI when that is the configured provider, otherwise Google AI Studio,
+    because embeddings and the ADK agent need Gemini even when Groq writes text.
+    """
+    if settings.llm.provider is Provider.VERTEX:
+        project, location = _vertex_location(settings)
+        return {"vertexai": True, "project": project, "location": location}
+    return {"api_key": _secret_value(settings.google_ai_api_key, "GOOGLE_AI_API_KEY")}
+
+
+def gemini_client(settings: Settings | None = None) -> genai.Client:
+    """A google-genai client with the same retry policy as the Pydantic AI models."""
+    settings = settings or get_settings()
+    options = gemini_client_options(settings)
+    return genai.Client(**options, http_options=HttpOptions(retry_options=GEMINI_RETRIES))
+
+
 def _google_ai_studio(settings: Settings) -> Model:
     api_key = _secret_value(settings.google_ai_api_key, "GOOGLE_AI_API_KEY")
     provider = GoogleProvider(api_key=api_key, retry_options=GEMINI_RETRIES)
@@ -63,13 +85,8 @@ def _google_ai_studio(settings: Settings) -> Model:
 def _vertex_ai(settings: Settings) -> Model:
     # No API key: Vertex AI uses Application Default Credentials, i.e. your
     # `gcloud` login locally and the job's service account on Cloud Run.
-    if not settings.google_cloud_project:
-        raise ConfigurationError("GOOGLE_CLOUD_PROJECT is not set; Vertex AI needs it.")
-    provider = GoogleCloudProvider(
-        project=settings.google_cloud_project,
-        location=settings.google_cloud_location,
-        retry_options=GEMINI_RETRIES,
-    )
+    project, location = _vertex_location(settings)
+    provider = GoogleCloudProvider(project=project, location=location, retry_options=GEMINI_RETRIES)
     return GoogleModel(settings.llm.gemini_model, provider=provider)
 
 
@@ -83,6 +100,12 @@ _BUILDERS: dict[Provider, Callable[[Settings], Model]] = {
     Provider.VERTEX: _vertex_ai,
     Provider.GROQ: _groq,
 }
+
+
+def _vertex_location(settings: Settings) -> tuple[str, str]:
+    if not settings.google_cloud_project:
+        raise ConfigurationError("GOOGLE_CLOUD_PROJECT is not set; Vertex AI needs it.")
+    return settings.google_cloud_project, settings.google_cloud_location
 
 
 def _secret_value(secret: SecretStr | None, env_var: str) -> str:

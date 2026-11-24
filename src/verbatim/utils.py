@@ -1,7 +1,9 @@
 """Generic file helpers that know nothing about surveys or models."""
 
+import asyncio
 import hashlib
 import shutil
+import time
 import urllib.request
 from pathlib import Path
 
@@ -29,3 +31,26 @@ def download_file(url: str, dest: Path, *, timeout: float = 60) -> Path:
         raise
     partial.replace(dest)
     return dest
+
+
+class RateLimiter:
+    """Spaces out async calls so at most `per_minute` start in any minute.
+
+    Concurrency limits how many calls run at once; this limits how many start,
+    which is what API quotas count. `None` means no limit.
+    """
+
+    def __init__(self, per_minute: float | None) -> None:
+        self._interval = 60 / per_minute if per_minute else 0.0
+        self._next_start = 0.0
+        self._lock = asyncio.Lock()
+
+    async def wait(self) -> None:
+        if not self._interval:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            delay = self._next_start - now
+            self._next_start = max(now, self._next_start) + self._interval
+        if delay > 0:
+            await asyncio.sleep(delay)

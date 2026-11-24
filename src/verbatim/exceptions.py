@@ -20,3 +20,11 @@ class DataIntegrityError(VerbatimError):
 
 class DownloadError(VerbatimError):
     """A remote file could not be downloaded (network down, timeout, disk full)."""
+
+
+class MissingArtifactError(VerbatimError):
+    """A file that an earlier command produces is not there yet."""
+
+
+class UnsafeInputError(VerbatimError):
+    """A guardrail blocked text that looks like an attempt to steer the agent."""

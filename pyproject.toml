@@ -1,20 +1,33 @@
 [project]
 name = "verbatim"
-version = "0.1.0"
+version = "1.0.0"
 description = "Agentic analysis of open-ended survey responses with Pydantic AI, LangChain, LangGraph and Google ADK on GCP."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "google-adk[a2a,mcp]>=2.15",
+    "google-genai>=2.34",
+    "langchain-core>=1.8.4",
+    "langgraph>=1.2.24",
+    "mcp>=2.3",
+    "numpy>=2.0",
+    "opentelemetry-sdk>=1.39",
     "pandas>=2.2",
     "pyarrow>=17.0",
     "pydantic>=2.8",
     "pydantic-ai-slim[google,groq]>=2.73",
     "pydantic-settings>=2.4",
     "python-dotenv>=1.0",
+    "rank-bm25>=0.2.2",
 ]
 
 [project.scripts]
 verbatim = "verbatim.cli:main"
+
+[project.optional-dependencies]
+gcp = [
+    "google-adk[gcp,otel-gcp]>=2.15",
+]
 
 [dependency-groups]
 dev = [
@@ -47,3 +60,8 @@ addopts = ["--import-mode=importlib"]
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
+untyped_calls_exclude = ["opentelemetry.exporter.cloud_trace"]
+
+[[tool.mypy.overrides]]
+module = ["rank_bm25"]
+ignore_missing_imports = true

@@ -1,11 +1,13 @@
 """Step 1 end to end: fetch -> load -> clean -> split -> validate -> save.
 
 `build_dataset()` only orchestrates; each step lives in its own module and can
-be read and tested on its own.
+be read and tested on its own. Later steps read its output back through
+`load_responses()` and `load_codeframe()`, never by opening the files directly.
 """
 
 import json
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from verbatim.data.cleaning import clean_responses, theme_columns
 from verbatim.data.schema import NO_ANSWER_THEME, validate_responses
 from verbatim.data.source import NHS_FFT_SOURCE, DatasetSource, load_raw
 from verbatim.data.splitting import split_by_respondent
+from verbatim.exceptions import MissingArtifactError
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,32 @@ def summarize_codeframe(themes: list[str], responses: pd.DataFrame) -> list[dict
         for theme in themes
         if theme != NO_ANSWER_THEME
     ]
+
+
+def load_responses(
+    settings: Settings | None = None, *, splits: Collection[str] | None = None
+) -> pd.DataFrame:
+    """The processed answers written by `build_dataset()`, optionally only some splits."""
+    settings = settings or get_settings()
+    path = _require(settings.data.responses_path)
+    responses = pd.read_parquet(path)
+    responses["human_themes"] = responses["human_themes"].map(list)  # arrays -> lists
+    if splits is not None:
+        responses = responses[responses["split"].isin(splits)].reset_index(drop=True)
+    return responses
+
+
+def load_codeframe(settings: Settings | None = None) -> list[str]:
+    """The codeable theme names, in codeframe order."""
+    settings = settings or get_settings()
+    entries = json.loads(_require(settings.data.codeframe_path).read_text(encoding="utf-8"))
+    return [str(entry["theme"]) for entry in entries]
+
+
+def _require(path: Path) -> Path:
+    if not path.exists():
+        raise MissingArtifactError(f"{path} not found. Run `verbatim build-data` first.")
+    return path
 
 
 def _value_counts(values: pd.Series) -> dict[str, int]:

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models.test import TestModel as OfflineModel
 
 from verbatim import cli
@@ -91,3 +92,13 @@ def test_check_models_exits_0_when_every_provider_works(monkeypatch, capsys):
 
     assert cli.main(["check-models"]) == 0
     assert "tokens" in capsys.readouterr().out
+
+
+def test_provider_outages_print_one_line(monkeypatch, caplog):
+    def overloaded(force_download):
+        raise ModelHTTPError(503, "gemini", body="high demand")
+
+    monkeypatch.setattr(cli, "build_dataset", overloaded)
+
+    assert cli.main(["build-data"]) == 1
+    assert "failed after retries" in caplog.text
