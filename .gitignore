@@ -18,10 +18,10 @@ dist/
 service-account*.json
 
 # Data is downloaded by the pipeline, never committed
-data/
+/data/
 
 # Local vector stores and agent artefacts
-chroma/
+/chroma/
 *.sqlite3
 
 # Editor / OS

@@ -1,0 +1,8 @@
+# Allowlist: the image only gets what it needs. Secrets, data, caches and
+# local tooling stay out by default.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+**/__pycache__

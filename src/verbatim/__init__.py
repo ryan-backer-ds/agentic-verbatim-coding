@@ -1,3 +1,5 @@
 """Verbatim: agentic analysis of open-ended survey responses."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+__version__ = version("verbatim")  # single source of truth: pyproject.toml

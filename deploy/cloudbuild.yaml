@@ -1,0 +1,50 @@
+# Build the image, push it to Artifact Registry, then create or update the Cloud Run Job.
+#
+#   gcloud builds submit --config deploy/cloudbuild.yaml .
+#
+# One-time project setup (APIs, registry, bucket, service account): deploy/setup_gcp.sh
+
+substitutions:
+  _REGION: europe-west2
+  _REPOSITORY: verbatim
+  _JOB: verbatim-batch
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/verbatim
+  _BUCKET: ${PROJECT_ID}-verbatim-data
+  _JOB_SERVICE_ACCOUNT: verbatim-batch@${PROJECT_ID}.iam.gserviceaccount.com
+
+options:
+  dynamicSubstitutions: true
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}:${BUILD_ID}", "-t", "${_IMAGE}:latest", "."]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "--all-tags", "${_IMAGE}"]
+
+  # On GCP the job talks to Gemini through Vertex AI with its own service account,
+  # so no Google API key exists anywhere. The Groq key comes from Secret Manager.
+  - id: deploy-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_JOB}
+      - --image=${_IMAGE}:${BUILD_ID}
+      - --region=${_REGION}
+      - --service-account=${_JOB_SERVICE_ACCOUNT}
+      - --tasks=1
+      - --max-retries=1
+      - --task-timeout=30m
+      - --cpu=1
+      - --memory=1Gi
+      - --set-env-vars=LLM__PROVIDER=vertex,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global
+      - --set-secrets=GROQ_API_KEY=groq-api-key:latest
+      # The bucket replaces the image's /data folder (DATA__ROOT), owned by the app user.
+      - --add-volume=name=data,type=cloud-storage,bucket=${_BUCKET},mount-options=uid=1000;gid=1000
+      - --add-volume-mount=volume=data,mount-path=/data

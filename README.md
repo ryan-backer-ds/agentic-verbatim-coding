@@ -10,7 +10,8 @@
 ![Google ADK](https://img.shields.io/badge/Google_ADK-4285F4?logo=google&logoColor=white)
 ![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white)
-![Status](https://img.shields.io/badge/status-step_1_of_7-F9A825)
+![Status](https://img.shields.io/badge/status-step_2_of_7-F9A825)
+[![CI](https://github.com/ryan-backer-ds/pydanticai-rag-langgraph-adk/actions/workflows/ci.yml/badge.svg)](https://github.com/ryan-backer-ds/pydanticai-rag-langgraph-adk/actions/workflows/ci.yml)
 
 ---
 
@@ -50,19 +51,19 @@ patient-experience survey. It has the same shape as an NPS survey in market rese
 rating question followed by an open "why?".
 
 What makes it a good portfolio dataset is that **every answer was coded by trained human coders**
-against a 50-theme codeframe. That gives a gold standard to evaluate the LLM coder against, which
+against a 49-theme codeframe. That gives a gold standard to evaluate the LLM coder against, which
 most public text datasets do not have.
 
 | | |
 |---|---|
 | **Source** | [pxtextmining](https://github.com/The-Strategy-Unit/pxtextmining) (The Strategy Unit / NHS England), MIT licence |
 | **Organisations** | North East Ambulance Service (NEAS), Northamptonshire Healthcare (NHFT) |
-| **Period** | January 2021 to December 2022 |
-| **Size** | 7,908 raw answers; 6,205 usable after removing blanks and "Did not answer" |
-| **Respondents** | 4,129 with a usable answer; about half answered two questions |
+| **Period** | April 2021 to September 2022 |
+| **Size** | 7,908 raw answers; 6,211 usable after removing blanks and "Did not answer" |
+| **Respondents** | 4,132 with a usable answer; about half answered two questions |
 | **Closed question** | FFT rating, 1 = very good … 5 = very poor |
 | **Open questions** | "What was good?", "What could we do better?", "FFT Why?", … |
-| **Human labels** | Multi-label themes from a [50-code framework](https://the-strategy-unit.github.io/PatientExperience-QDC/framework/framework3.html), plus a 1–5 sentiment score |
+| **Human labels** | Multi-label themes from a [50-code framework](https://the-strategy-unit.github.io/PatientExperience-QDC/framework/framework3.html) (49 themes plus "Labelling not possible" for blanks), and a 1–5 sentiment score, 1 = very positive |
 | **Segments** | Trust, service (patient transport, 111, mental health, …), date |
 
 A few verbatims, as written by respondents:
@@ -72,7 +73,8 @@ A few verbatims, as written by respondents:
 
 It is also realistically messy. 80% of answers come from satisfied respondents, the theme
 distribution is long-tailed (a handful of themes cover most answers, several have almost no
-examples), dates mix UK and US formats, and a few blank answers were still given a theme.
+examples), one export wrote its dates in US format, and a dozen whitespace-only answers were
+still coded.
 
 ---
 
@@ -85,12 +87,12 @@ flowchart TB
         direction TB
         subgraph SRC["📥 Survey data"]
             direction LR
-            RAW[("NHS FFT export<br/>7,908 answers")] ~~~ GOLD[["Human codes<br/>50-theme codeframe"]]
+            RAW[("NHS FFT export<br/>7,908 answers")] ~~~ GOLD[["Human codes<br/>49-theme codeframe"]]
         end
 
         subgraph S1["① Data foundation · pandas"]
             direction LR
-            CLEAN["Clean & normalise"] --> PII["Scrub PII"] --> SPLIT["Split by respondent<br/>train / test"]
+            CLEAN["Clean & normalise"] --> PII["Scrub PII"] --> SPLIT["Split by respondent<br/>train / dev / test"]
         end
 
         subgraph S2["② Coding · Pydantic AI"]
@@ -231,8 +233,21 @@ flowchart TD
 ## Evaluation
 
 The human codes are split by respondent, so the test set measures performance on people the
-system has never seen. Every step ships with its own metric, and step 6 turns them into one
-harness that runs in CI.
+system has never seen. Few-shot examples and baselines come from **train**, prompts and models are
+tuned on **dev**, and **test** is scored once per release. Every step ships with its own metric,
+and step 6 turns them into one harness that runs in CI.
+
+What the data means for scoring, checked before step 2 starts:
+
+- **Long tail.** 4 themes are never used and 17 have fewer than 5 test examples, so per-theme
+  scores are reported with their support and confidence intervals, not as one macro-F1.
+- **Repeated answers.** About 15% of test answers have an exact twin in train (mostly
+  "Nothing"), so scores are reported with and without them.
+- **Context.** "Nothing" is coded positive after "What could we do better?" and negative after
+  "What was good?", so the question goes into the coding prompt.
+- **Label noise.** 38 of the 147 texts that appear more than once carry different human codes,
+  which caps the agreement any coder can reach. "Not assigned" (348 answers) works as a null
+  label rather than a theme.
 
 ```mermaid
 %%{init: {'theme': 'default'}}%%
@@ -266,9 +281,9 @@ flowchart TB
 
 | Concern | How the project handles it | Step |
 |---------|----------------------------|------|
-| **Untrusted input** | Verbatims are written by the public. They are delimited as data in prompts, screened for injection attempts, and the agent can only call allow-listed tools. Model Armor in production. | 2, 7 |
-| **Privacy** | PII is masked before text reaches an LLM, a log or a vector store. Sensitive Data Protection for names in production. | 1, 7 |
-| **Evaluation** | Gold human labels, respondent-level holdout, per-theme agreement, ADK eval sets, rubric-based autoraters. | 2–6 |
+| **Untrusted input** | Verbatims are written by the public. The coder has no tools and can only return themes from the closed codeframe, so injected text can at worst mislabel one answer, which evaluation catches. The insights agent treats retrieved verbatims as data and only has read-only tools; Model Armor screens its input in production. | 2, 7 |
+| **Privacy** | Regexes mask structured identifiers (emails, phone and NHS numbers, postcodes) in step 1. Names need NER, so Sensitive Data Protection is added before any non-public data is used. | 1, 7 |
+| **Evaluation** | Gold human labels, respondent-level train / dev / test split, per-theme agreement, ADK eval sets, rubric-based autoraters. | 1–6 |
 | **Control** | Closed codeframe, typed outputs with validators, bounded loops, human approval on reports. | 2, 4 |
 | **Scalability** | Batch coding with bounded concurrency, retries and caching by text hash; Cloud Run Jobs and BigQuery for volume. | 2, 7 |
 | **Cost** | Small fast model for high-volume coding, larger model only for analysis; token usage tracked per run. | 2, 6 |
@@ -336,12 +351,12 @@ flowchart LR
 | Step | Topic | Main tools | Status |
 |------|-------|-----------|--------|
 | 1 | Data foundation: download, clean, PII scrub, respondent-level split | pandas | ✅ Done |
-| 2 | Verbatim coding with structured outputs, scored against human coders | Pydantic AI, Gemini | 🔜 Next |
+| 2 | Verbatim coding with structured outputs, scored against human coders | Pydantic AI, Gemini, Groq | 🚧 Model access done |
 | 3 | Retrieval: embeddings, hybrid search, metadata filters, reranking | LangChain, Chroma, Vertex AI | ⬜ |
 | 4 | Analyst workflow with routing, grounding checks and human review | LangGraph | ⬜ |
 | 5 | Insights agent with workflow agents, sessions and memory; deploy | Google ADK, Agent Runtime | ⬜ |
 | 6 | Evaluation harness and model comparison | Gen AI evaluation service, ADK evalsets | ⬜ |
-| 7 | Production hardening: guardrails, tracing, A2A / MCP, CI | Model Armor, Cloud Trace, GitHub Actions | ⬜ |
+| 7 | Production hardening: guardrails, tracing, A2A / MCP | Model Armor, Cloud Trace | ⬜ (CI already runs) |
 
 ### Step 1: Data foundation ✅
 
@@ -358,12 +373,12 @@ flowchart LR
         subgraph CL["Clean"]
             direction TB
             C["Decode one-hot codes<br/>→ human_themes list"] --> D["Drop non-answers<br/>blanks, 'Did not answer'"]
-            D --> E["Normalise text<br/>+ scrub PII"] --> E2["Parse mixed<br/>UK / US dates"]
+            D --> E["Normalise text<br/>+ scrub PII"] --> E2["Parse dates<br/>UK or US per export"]
         end
 
         subgraph PR["Prepare"]
             direction TB
-            F["FFT score → group<br/>positive · neutral · negative"] --> G["Hash split by respondent<br/>80% train · 20% test"]
+            F["FFT score → group<br/>positive · neutral · negative"] --> G["Hash split by respondent<br/>70% train · 10% dev · 20% test"]
             G --> H[("responses.parquet<br/>codeframe.json")]
         end
 
@@ -386,17 +401,134 @@ Decisions worth calling out:
 
 - **Reproducible input.** The source file is pinned to a commit and checked against a SHA-256 hash,
   so a silent upstream change cannot shift the results.
-- **Mixed date formats, handled explicitly.** One export used US dates (`9/30/2022`) while the
-  rest are UK (`30/09/2021`). Strict parsing surfaced it; the parser resolves it with a documented
-  rule instead of letting pandas guess.
+- **Date formats decided per export.** The raw file stacks several exports, and one NEAS export
+  wrote US dates (`10/17/2021`, `9/30/2022`). A first version read every zero-padded date as UK,
+  but that export pads too: `10/03/2021` is 3 October there, not 10 March. Review caught 190
+  answers dated up to ten months out, because one respondent's two answers carried different
+  dates. The parser now decides the format once per export from the dates that read only one
+  way, and validation checks that every respondent has a single date.
+- **"None" is an answer, not a missing value.** By default pandas reads the text `None` as NaN,
+  which silently dropped answers like "None" to *"What could we do better?"* (coders tagged
+  them as positive). The loader treats only empty cells as missing, and a test locks that in.
 - **Split by respondent, not by row.** About half the respondents answered two questions. A
   row-level split could put one of a person's answers in train and the other in test, which
   inflates scores.
-- **Hash-based split.** Assignment depends only on the respondent ID, so it stays stable when new
-  survey waves are appended.
+- **Hash-based split, with a dev set.** Assignment depends only on the respondent ID, so it stays
+  stable when new survey waves are appended. Test takes the lowest hash buckets and dev the next
+  ones, so prompt tuning in step 2 never touches the test set.
 - **Gold labels are kept apart.** Human themes and sentiment live in `human_*` columns and are
   never sent to a model.
-- **PII is masked first.** Everything downstream (prompts, logs, vector store) only sees scrubbed text.
+- **PII masking is a first pass, not a guarantee.** Regexes mask emails, phone and NHS numbers and
+  postcodes, with tests for text that must stay untouched (`the A1 2nd exit`). On this dataset
+  they mask nothing, because the publisher had already redacted it (`[name redacted]`); a few
+  staff names still get through. That is acceptable for public data, but a names pass is
+  needed before any client data reaches a model.
+- **Validated before it is saved.** `validate_responses()` checks the column contract, unique IDs,
+  allowed values, that no respondent sits in two splits and that each has one date, so bad data
+  stops the build instead of reaching an agent.
+
+### Step 2a: Model access ✅
+
+All LLM calls go through `build_model()` in `verbatim/llm/providers.py`, which returns a Pydantic AI
+model for the configured provider. The rest of the code never imports a vendor SDK, so switching provider is a
+config change, not a code change.
+
+| Provider | Model | Auth | Used for |
+|----------|-------|------|----------|
+| `google` | `gemini-3.5-flash-lite` | AI Studio API key | Local development |
+| `vertex` | `gemini-3.5-flash-lite` | Service account (no key) | Anything running on GCP |
+| `groq` | `openai/gpt-oss-20b` | Groq API key | Open-weights comparison, cheapest option |
+
+Health check (`uv run verbatim check-models`), one structured-output call per provider on
+*"Staff were lovely but the ambulance was two hours late."*:
+
+| Provider | Answer | Latency | Tokens in / out | Cost per call | ≈ per 10k calls |
+|----------|--------|---------|-----------------|---------------|-------------------|
+| Gemini 3.5 Flash-Lite | mixed ✅ | 0.6 s | 112 / 40 | $0.00013 | $1.30 |
+| gpt-oss-20b on Groq | mixed ✅ | 0.3 s | 173 / 60 | $0.00003 | $0.30 |
+
+Why these models and settings:
+
+- **Cheapest tier that is current.** Gemini 2.5 Flash-Lite is cheaper per token but scheduled for
+  retirement; 3.1 Flash-Lite is cheaper than 3.5 but older. The real choice is made in step 6,
+  on the human-coded test set, by quality *and* cost.
+- **Reasoning set to minimal.** Coding answers is classification; thinking tokens are the
+  biggest cost lever on modern models.
+- **Retries with backoff.** Both Flash-Lite models returned `503 high demand` on several calls
+  during testing. With exponential backoff and jitter on 429/5xx, every run since has succeeded.
+- **Costs above are for a tiny prompt.** The real coding prompt carries the 49-theme codeframe,
+  so step 2 measures the true cost per answer.
+- **Secrets stay out of the repo.** `.env` only holds `KEYS_FILE`, a path to a file outside the
+  repo. Keys are `SecretStr`, so they never appear in logs or tracebacks. On GCP, Vertex AI
+  uses the job's service account and the Groq key comes from Secret Manager.
+
+---
+
+## Deploy to Google Cloud
+
+The batch steps (data prep now, bulk coding next) run as a **Cloud Run Job**: a container that
+starts, processes, and exits, billed only while it runs. Cloud Build builds the image, stores it in
+**Artifact Registry**, and deploys the job.
+
+Status: the deployment files are checked against Google's documentation, and CI builds the image
+on every push, but they have not yet been run against a real Google Cloud project.
+
+```mermaid
+%%{init: {'theme': 'default'}}%%
+flowchart LR
+    subgraph FRAME[" "]
+        direction LR
+        DEV["💻 Laptop or CI<br/>gcloud builds submit"] --> CB["Cloud Build<br/>docker build"]
+        CB -- "push" --> AR[("Artifact Registry<br/>verbatim image")]
+        CB -- "deploy" --> JOB["Cloud Run Job<br/>verbatim-batch"]
+        AR -. "pull" .-> JOB
+        JOB -- "service account,<br/>no API key" --> VX["Vertex AI<br/>Gemini"]
+        JOB -- "volume /data" --> GCS[("Cloud Storage<br/>data bucket")]
+        SM["Secret Manager<br/>groq-api-key"] -. "env var" .-> JOB
+        JOB -. "logs" .-> LOG["Cloud Logging"]
+    end
+
+    classDef build fill:#ECEFF1,stroke:#455A64,stroke-width:2px,color:#0D1B2A
+    classDef run fill:#FFF3E0,stroke:#EF6C00,stroke-width:2px,color:#0D1B2A
+    classDef store fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D1B2A
+    classDef ai fill:#F3E5F5,stroke:#8E24AA,stroke-width:2px,color:#0D1B2A
+    classDef secure fill:#FFEBEE,stroke:#C62828,stroke-width:2px,color:#0D1B2A
+    class DEV,CB,LOG build
+    class JOB run
+    class AR,GCS store
+    class VX ai
+    class SM secure
+    style FRAME fill:#FFFFFF,stroke:#D0D7DE,stroke-width:1px,color:#FFFFFF
+```
+
+Production choices in the deployment:
+
+- **No Google API key in the cloud.** The job calls Vertex AI as its own service account, which
+  only has `aiplatform.user` and access to its own bucket.
+- **Data through a Cloud Storage volume.** The image sets `DATA__ROOT=/data`, and on Cloud Run
+  the bucket is mounted there, so the pipeline code is identical locally and in the cloud.
+- **Small, safe image.** An allowlist `.dockerignore`, a cached dependency layer from `uv.lock`,
+  and a non-root user.
+- **Immutable tags.** Each build is tagged with its build ID, so the job always runs a known image.
+- **Endpoint location is a setting.** The job calls Gemini through the `global` endpoint, which
+  has the widest model choice but does not guarantee where requests are processed. For data that
+  must stay in the UK or EU, set `GOOGLE_CLOUD_LOCATION` to a regional endpoint that serves the
+  model.
+
+Run it (needs the [gcloud CLI](https://cloud.google.com/sdk/docs/install), or use Cloud Shell):
+
+```bash
+# once per project
+read -rs GROQ_API_KEY && export GROQ_API_KEY
+bash deploy/setup_gcp.sh YOUR_PROJECT_ID
+
+# build, push and deploy
+gcloud builds submit --config deploy/cloudbuild.yaml .
+
+# run a step: check model access, then prepare the data into the bucket
+gcloud run jobs execute verbatim-batch --region=europe-west2 --wait
+gcloud run jobs execute verbatim-batch --region=europe-west2 --args=build-data --wait
+```
 
 ---
 
@@ -404,38 +536,115 @@ Decisions worth calling out:
 
 ```text
 pydanticai-rag-langgraph-adk/
-├── src/verbatim/
-│   ├── config.py        settings from env / .env                   ✅
-│   ├── data.py          step 1 · download, clean, split             ✅
-│   ├── coding.py        step 2 · Pydantic AI coding agent           🔜
-│   ├── retrieval.py     step 3 · LangChain indexing and retrieval   ⬜
-│   ├── graph.py         step 4 · LangGraph analyst workflow         ⬜
-│   ├── adk_agent/       step 5 · Google ADK agent and deployment    ⬜
-│   └── evaluation.py    step 6 · metrics and eval runs              ⬜
-├── tests/
-│   └── test_data.py                                                 ✅
-├── data/                created by step 1, not committed
-├── pyproject.toml
-└── README.md
+├── src/verbatim/              the installable package (src layout)
+│   ├── __main__.py            `python -m verbatim` runs the CLI
+│   ├── cli.py                 command line: build-data, check-models          ✅
+│   ├── config.py              typed settings: env vars > keys file > .env      ✅
+│   ├── exceptions.py          VerbatimError and its subclasses                 ✅
+│   ├── utils.py               generic file helpers: download, checksum         ✅
+│   ├── data/                  step 1 · the survey dataset                      ✅
+│   │   ├── source.py          pinned download, checksum, CSV loading
+│   │   ├── cleaning.py        pure transforms: text, PII, dates, themes
+│   │   ├── splitting.py       train/dev/test by respondent
+│   │   ├── schema.py          column contract and validation
+│   │   └── pipeline.py        build_dataset(): runs the steps, saves outputs
+│   ├── llm/                   step 2a · model access                           ✅
+│   │   ├── providers.py       build_model(): Gemini, Vertex AI, Groq
+│   │   └── health.py          check_model(): one cheap, typed call
+│   ├── coding/                step 2 · Pydantic AI coding agent                🔜
+│   ├── retrieval/             step 3 · LangChain indexing and retrieval        ⬜
+│   ├── workflow/              step 4 · LangGraph analyst workflow              ⬜
+│   ├── insights/              step 5 · Google ADK agent                        ⬜
+│   └── evaluation/            step 6 · metrics and eval runs                   ⬜
+├── tests/                     mirrors src/verbatim/; offline, no API calls     ✅
+├── deploy/
+│   ├── cloudbuild.yaml        build → Artifact Registry → Cloud Run Job        ✅
+│   └── setup_gcp.sh           one-time APIs, bucket, service account, secret   ✅
+├── .github/workflows/ci.yml   ruff, mypy, pytest and a Docker build per push   ✅
+├── Dockerfile                 batch image (uv, non-root)                       ✅
+├── .env.example               settings template, no secrets                    ✅
+├── pyproject.toml             dependencies, `verbatim` command, tool config
+├── uv.lock                    exact versions of every dependency
+└── data/                      created by step 1, not committed
 ```
+
+## How the code is organised
+
+Dependencies point one way. The command line uses the feature packages, and the feature packages
+use the shared core. The core never imports a feature, and features never reach into each other's
+internals, so each step can be read, tested and replaced on its own.
+
+```mermaid
+%%{init: {'theme': 'default'}}%%
+flowchart TB
+    subgraph FRAME[" "]
+        direction TB
+        CLI["cli.py<br/>commands · printing · exit codes"]
+        subgraph FEAT["Feature packages: one per step"]
+            direction LR
+            DATA["data/<br/>step 1 dataset"]
+            LLM["llm/<br/>model access"]
+            NEXT["coding/ · retrieval/ · workflow/ · ...<br/>next steps"]
+        end
+        subgraph CORE["Shared core"]
+            direction LR
+            CFG["config.py<br/>Settings"]
+            EXC["exceptions.py<br/>VerbatimError"]
+            UT["utils.py<br/>file helpers"]
+        end
+        CLI --> FEAT --> CORE
+    end
+
+    classDef entry fill:#FFF3E0,stroke:#EF6C00,stroke-width:2px,color:#0D1B2A
+    classDef feature fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D1B2A
+    classDef planned fill:#F6F8FA,stroke:#8C959F,stroke-width:1px,stroke-dasharray:4 3,color:#59636E
+    classDef core fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#0D1B2A
+    class CLI entry
+    class DATA,LLM feature
+    class NEXT planned
+    class CFG,EXC,UT core
+    style FEAT fill:#F5FAFF,stroke:#90CAF9,color:#0D1B2A
+    style CORE fill:#F4FBF4,stroke:#A5D6A7,color:#0D1B2A
+    style FRAME fill:#FFFFFF,stroke:#D0D7DE,stroke-width:1px,color:#FFFFFF
+```
+
+| Convention | In this repo |
+|------------|--------------|
+| **Modules** | One responsibility each, named with a lowercase noun: `cleaning.py`, `providers.py`. A folder becomes a package once a step needs more than one module. |
+| **Functions** | Named with a verb when they do something (`build_dataset`, `scrub_pii`), or after what they return when they only look something up (`theme_columns`, `configured_providers`). A `_leading_underscore` means private to its module. Options after `*` are keyword-only. |
+| **Classes** | Only where data and behaviour belong together, or for typed records: `DatasetSource` (frozen dataclass with `fetch()`), `Settings` (pydantic), `HealthCheck` (result record), `Provider` (enum). |
+| **Constants** | `UPPER_SNAKE_CASE`, defined once. The data contract (raw-to-clean column names, saved column order, allowed values) lives in `data/schema.py`. |
+| **Pure core, I/O at the edges** | `cleaning.py` and `splitting.py` never touch files or the network. Reading and writing happen in `source.py`, `pipeline.py` and `cli.py`. |
+| **Configuration** | One typed `Settings` object. Functions take it as an argument (handy in tests) and fall back to `get_settings()`. Relative paths (`data/`, `.env`) are relative to the working directory. |
+| **Errors** | Expected failures (bad settings, a failed download, unexpected data) raise a `VerbatimError` subclass, which the CLI turns into a one-line message and exit code 1. Bugs keep their full traceback. |
+| **Output** | Library code logs through `logging.getLogger(__name__)`. Only `cli.py` prints, sets up logging or chooses exit codes. |
+| **Types and style** | Full type hints checked by `mypy --strict`; `ruff` for linting, import order and naming; both run in CI. |
+| **Tests** | `tests/` mirrors `src/verbatim/`. One behaviour per test, named after it. Fixtures live in `conftest.py`. |
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+. Run the commands from the project
+folder: `data/` and `.env` are read relative to it.
 
 ```bash
 git clone https://github.com/ryan-backer-ds/pydanticai-rag-langgraph-adk.git
 cd pydanticai-rag-langgraph-adk
 uv sync
 
-uv run python -m verbatim.data   # download and prepare the survey data
-uv run pytest                    # run the tests
+uv run verbatim build-data         # download and prepare the survey data (no keys needed)
+cp .env.example .env               # then uncomment KEYS_FILE and point it at your keys file
+uv run verbatim check-models       # check model access and cost per call
+
+uv run pytest                      # run the tests (no API calls)
+uv run ruff check .                # lint, as CI does
+uv run ruff format --check .       # formatting
+uv run mypy src                    # strict type checks
 ```
 
 Step 1 writes two files to `data/processed/`:
 
 - `responses.parquet`: one row per usable answer, with segments, FFT score, scrubbed text, human
-  labels and a `split` column
+  labels and a `split` column (`train`, `dev` or `test`)
 - `codeframe.json`: the 49 codeable themes in framework order, with how often coders used each
 
 ## Data licence and attribution
