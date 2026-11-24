@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+project_id        = "your-gcp-project-id"
+github_repository = "your-github-user/pydanticai-rag-langgraph-adk"
+# region          = "europe-west2"
+# model_location  = "global"
+# create_bigquery_tables = true   # after the first `verbatim build-data` job run

@@ -29,3 +29,14 @@ service-account*.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Terraform: local state, plugins and real variable values
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Build output
+dist/
