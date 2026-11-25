@@ -11,7 +11,7 @@
 ![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)
 ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white)
-[![CI](https://github.com/ryan-backer-ds/survey-verbatim-analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/ryan-backer-ds/survey-verbatim-analysis/actions/workflows/ci.yml)
+[![CI](https://github.com/ryan-backer-ds/agentic-verbatim-coding/actions/workflows/ci.yml/badge.svg)](https://github.com/ryan-backer-ds/agentic-verbatim-coding/actions/workflows/ci.yml)
 
 ---
 
@@ -547,7 +547,7 @@ keeps processing in the UK.
 ## Project structure
 
 ```text
-survey-verbatim-analysis/
+agentic-verbatim-coding/
 ├── src/verbatim/
 │   ├── cli.py                 one command per step (verbatim --help)
 │   ├── config.py              typed settings: env vars > keys file > .env > defaults
@@ -641,8 +641,8 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+. Run the commands fro
 folder: `data/` and `.env` are read relative to it.
 
 ```bash
-git clone https://github.com/ryan-backer-ds/survey-verbatim-analysis.git
-cd survey-verbatim-analysis
+git clone https://github.com/ryan-backer-ds/agentic-verbatim-coding.git
+cd agentic-verbatim-coding
 uv sync --all-extras
 
 uv run verbatim build-data                 # ① download and prepare the survey data (no keys)
