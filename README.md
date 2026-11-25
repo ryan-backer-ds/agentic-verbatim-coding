@@ -11,7 +11,7 @@
 ![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)
 ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white)
-[![CI](https://github.com/ryan-backer-ds/pydanticai-rag-langgraph-adk/actions/workflows/ci.yml/badge.svg)](https://github.com/ryan-backer-ds/pydanticai-rag-langgraph-adk/actions/workflows/ci.yml)
+[![CI](https://github.com/ryan-backer-ds/survey-verbatim-analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/ryan-backer-ds/survey-verbatim-analysis/actions/workflows/ci.yml)
 
 ---
 
@@ -52,7 +52,7 @@ Real responses to the **NHS Friends and Family Test (FFT)**, the UK health servi
 patient-experience survey. It has the same shape as an NPS survey in market research: a closed
 rating question followed by an open "why?".
 
-What makes it a good portfolio dataset is that **every answer was coded by trained human coders**
+What makes it worth using is that **every answer was coded by trained human coders**
 against a 49-theme codeframe. That gives a gold standard to evaluate the LLM coder against, which
 most public text datasets do not have.
 
@@ -86,7 +86,7 @@ answered hundreds of times and not always coded the same way.
 flowchart TB
     subgraph FRAME[" "]
         direction TB
-        subgraph SRC["📥 Survey data"]
+        subgraph SRC["Survey data"]
             direction LR
             RAW[("NHS FFT export<br/>7,908 answers")] ~~~ GOLD[["Human codes<br/>49-theme codeframe"]]
         end
@@ -118,7 +118,7 @@ flowchart TB
 
         MCP["⑦ MCP server<br/>same tools, any client"]
         S6["⑥ Evaluation<br/>F1 · κ · bootstrap CIs · P@k · MRR"]
-        USER(["🧑‍💼 Analyst"])
+        USER(["Analyst"])
 
         SRC --> S1
         S1 --> S3
@@ -296,7 +296,7 @@ flowchart LR
 flowchart TD
     subgraph FRAME[" "]
         direction TD
-        Q(["❓ Analyst question"]) --> SCREEN["screen<br/>guardrails · Model Armor"]
+        Q(["Analyst question"]) --> SCREEN["screen<br/>guardrails · Model Armor"]
         SCREEN --> PLAN["plan<br/>Pydantic AI → AnalysisPlan"]
         PLAN -- "numbers" --> STATS["stats<br/>theme_stats"]
         PLAN -- "quotes" --> EVID["evidence<br/>search_answers"]
@@ -305,7 +305,7 @@ flowchart TD
         DRAFT --> CHECK{"check<br/>citations and % real?"}
         CHECK -- "no · at most 2 redrafts" --> DRAFT
         CHECK -- "yes" --> REVIEW["review<br/>optional human interrupt"]
-        REVIEW --> A(["✅ Answer + quotes"])
+        REVIEW --> A(["Answer + quotes"])
     end
 
     classDef io fill:#ECEFF1,stroke:#455A64,stroke-width:2px,color:#0D1B2A
@@ -350,7 +350,7 @@ brackets, so the check failed every draft until `normalize_citations` rewrote th
 flowchart LR
     subgraph FRAME[" "]
         direction LR
-        USER(["🧑‍💼 Analyst"]) --> RUNNER["ADK Runner<br/>session"]
+        USER(["Analyst"]) --> RUNNER["ADK Runner<br/>session"]
         RUNNER --> CB{"before_model_callback<br/>guardrail"}
         CB -- "unsafe" --> REF["refusal<br/>model never called"]
         CB -- "safe" --> AGENT["LlmAgent<br/>Gemini · minimal thinking"]
@@ -461,7 +461,7 @@ mostly answered with "Nothing.".
 | **Cost** | Minimal reasoning, de-duplication, embedding cache, cost tracked per answer, a free baseline to beat | `coding/runner.py`, `retrieval/embeddings.py` |
 | **Observability** | OpenTelemetry spans for every agent run, model call and tool call (tokens and cost included), exported to Cloud Trace | `observability.py` |
 | **Interoperability** | The analyst tools as an MCP server, usable by any MCP client | `mcp_server.py` |
-| **Quality gates** | CI runs ruff, `mypy --strict`, 138 offline tests and a Docker build on every push | `.github/workflows/ci.yml` |
+| **Quality gates** | CI runs ruff, `mypy --strict`, 140 offline tests and a Docker build on every push | `.github/workflows/ci.yml` |
 | **Infrastructure** | The whole GCP project as Terraform; keyless deploys from GitHub through Workload Identity | `infra/`, `.github/workflows/deploy.yml` |
 
 ---
@@ -547,7 +547,7 @@ keeps processing in the UK.
 ## Project structure
 
 ```text
-pydanticai-rag-langgraph-adk/
+survey-verbatim-analysis/
 ├── src/verbatim/
 │   ├── cli.py                 one command per step (verbatim --help)
 │   ├── config.py              typed settings: env vars > keys file > .env > defaults
@@ -564,7 +564,7 @@ pydanticai-rag-langgraph-adk/
 │   ├── workflow/              ④ the LangGraph analyst workflow
 │   ├── insights/              ⑤ the Google ADK insights agent
 │   └── evaluation/            ⑥ metrics, coding and retrieval evaluation
-├── tests/                     mirrors src/verbatim/; 138 offline tests, no API calls
+├── tests/                     mirrors src/verbatim/; 140 offline tests, no API calls
 ├── infra/                     ⑦ Terraform for the whole GCP project
 ├── deploy/                    Cloud Build config, Agent Runtime deploy script
 ├── .github/workflows/         ci.yml (every push), deploy.yml (version tags)
@@ -629,7 +629,7 @@ flowchart TB
 | **Functions** | Usually named with a verb: `build_dataset`, `scrub_pii`, `split_by_respondent`. A `_leading_underscore` means private to its module. Options after `*` are keyword-only. |
 | **Classes** | Only where data and behaviour belong together, or for typed records: `DatasetSource`, `VerbatimIndex`, `AnalystToolkit` (state + behaviour); `CodedAnswer`, `AnalysisPlan`, `SegmentFilter` (pydantic models the agents fill in); `CodingRun`, `HealthCheck` (frozen dataclasses). |
 | **Pure core, I/O at the edges** | `cleaning.py`, `splitting.py`, `metrics.py` and `grounding.py` never touch files or the network. |
-| **Dependency injection** | Functions take `settings`, `model`, `index` or `toolkit` as optional arguments, which is how 138 tests run offline without patching globals. |
+| **Dependency injection** | Functions take `settings`, `model`, `index` or `toolkit` as optional arguments, which is how 140 tests run offline without patching globals. |
 | **Errors** | Expected failures raise a `VerbatimError` subclass, which the CLI turns into a one-line message and exit code 1. Bugs keep their full traceback. |
 | **Output** | Library code logs through `logging.getLogger(__name__)`. Only `cli.py` prints, sets up logging or chooses exit codes. |
 | **Types and style** | Full type hints checked by `mypy --strict`; `ruff` for linting, import order and naming; both run in CI. |
@@ -641,8 +641,8 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+. Run the commands fro
 folder: `data/` and `.env` are read relative to it.
 
 ```bash
-git clone https://github.com/ryan-backer-ds/pydanticai-rag-langgraph-adk.git
-cd pydanticai-rag-langgraph-adk
+git clone https://github.com/ryan-backer-ds/survey-verbatim-analysis.git
+cd survey-verbatim-analysis
 uv sync --all-extras
 
 uv run verbatim build-data                 # ① download and prepare the survey data (no keys)
